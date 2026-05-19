@@ -99,7 +99,7 @@ class FlexConfig:
 @dataclass
 class SolveConfig:
     load_csv: str = "wecc_load.csv"
-    wecc_case_py: str = "wecc240_2011.py"
+    wecc_case_py: str = "C:\\Users\\spoonawa\\Desktop\\New folder\\capacity-expansion-with-data-centers\\wecc240_2011.py"
     horizon_hours: int | None = None   # None -> full file
     start_hour: int = 0
     delay_penalty: float = 1.0
@@ -113,8 +113,12 @@ class SolveConfig:
 # Case loading
 # -----------------------------
 def load_wecc_case(case_file: str | Path) -> dict:
-    """Load the eudoxys WECC-240 python case file without requiring pypower_sim."""
+    """Load either a WECC-240 python case file or a MATPOWER .m file."""
     case_file = str(case_file)
+
+    if case_file.endswith(".m"):
+        return load_matpower_case(case_file)
+
     stub = types.ModuleType("pypower_sim")
     stub.PPModel = object
     stub.PPSolver = object
@@ -133,6 +137,40 @@ def load_wecc_case(case_file: str | Path) -> dict:
     raise AttributeError("Could not find `wecc240_2011` or `WECC240_2011` in the case file.")
 
 
+def load_matpower_case(case_file: str) -> dict:
+    """Parse a MATPOWER .m file and return a dict matching pypower format."""
+    import re
+
+    with open(case_file, "r") as f:
+        text = f.read()
+
+    def parse_matrix(name):
+        pattern = rf"mpc\.{name}\s*=\s*\[(.*?)\]"
+        match = re.search(pattern, text, re.DOTALL)
+        if not match:
+            return np.zeros((0, 1))
+        rows = []
+        for line in match.group(1).strip().split("\n"):
+            line = re.sub(r'%.*', '', line).strip().rstrip(';').strip()
+            if not line:
+                continue
+            vals = line.split()
+            if vals:
+                rows.append([float(v) for v in vals])
+        return np.array(rows) if rows else np.zeros((0, 1))
+
+    def parse_scalar(name):
+        match = re.search(rf"mpc\.{name}\s*=\s*([\d.]+)", text)
+        return float(match.group(1)) if match else 100.0
+
+    return {
+        "baseMVA": parse_scalar("baseMVA"),
+        "bus":     parse_matrix("bus"),
+        "gen":     parse_matrix("gen"),
+        "branch":  parse_matrix("branch"),
+        "gencost": parse_matrix("gencost"),
+        "dcline":  parse_matrix("dcline"),
+    }
 # -----------------------------
 # Load profile processing
 # -----------------------------
@@ -736,7 +774,7 @@ def run_wecc240_capacity_expansion(cfg: SolveConfig, flex: FlexConfig):
     case_data = build_dc_network(case)
     hourly_df = read_wecc_hourly_load(cfg.load_csv, start_hour=cfg.start_hour, horizon_hours=cfg.horizon_hours)
     L_base = build_bus_load_matrix_from_total_profile(
-        case, hourly_df, target="average", target_scale=1.9) / case_data["baseMVA"]
+        case, hourly_df, target="average", target_scale=0.95) / case_data["baseMVA"]
     baseMVA = case_data["baseMVA"]
     print("Peak baseline load (MW):", np.max(np.sum(L_base, axis=0)) * baseMVA)
     print("Average baseline load (MW):", np.mean(np.sum(L_base, axis=0)) * baseMVA)
@@ -764,7 +802,7 @@ if __name__ == "__main__":
     if __name__ == "__main__":
         cfg = SolveConfig(
             load_csv="wecc_load.csv",
-            wecc_case_py="wecc240_2011.py",
+            wecc_case_py="C:\\Users\\spoonawa\\Desktop\\New folder\\capacity-expansion-with-data-centers\\wecc240_2011.py",
             horizon_hours=24 * 10,
             start_hour=0,
             delay_penalty=1.0,
