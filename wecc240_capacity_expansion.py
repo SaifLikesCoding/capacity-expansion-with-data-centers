@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 import cvxpy as cp
 import matplotlib.pyplot as plt
+from load_gridsfm import load_gridsfm_case
 
 
 # -----------------------------
@@ -99,7 +100,7 @@ class FlexConfig:
 @dataclass
 class SolveConfig:
     load_csv: str = "wecc_load.csv"
-    wecc_case_py: str = "C:\\Users\\spoonawa\\Desktop\\New folder\\capacity-expansion-with-data-centers\\wecc240_2011.py"
+    wecc_case_py: str = "C:\\Users\\spoonawa\\Desktop\\New folder\\gridsfm_western.json"
     horizon_hours: int | None = None   # None -> full file
     start_hour: int = 0
     delay_penalty: float = 1.0
@@ -118,6 +119,9 @@ def load_wecc_case(case_file: str | Path) -> dict:
 
     if case_file.endswith(".m"):
         return load_matpower_case(case_file)
+    if case_file.endswith(".json"):
+        return load_gridsfm_case(case_file)
+    
 
     stub = types.ModuleType("pypower_sim")
     stub.PPModel = object
@@ -444,6 +448,8 @@ def build_wecc_cvxpy_model(case_data: dict,
     load_shed = cp.Variable((N, T), nonneg=True) if cfg.slack_penalty is not None else None
 
     cons = []
+    cons += [theta >= -3.14159, theta <= 3.14159]
+
     cons += [x <= Xmax]
     cons += [p >= Pmin[:, None], p <= (Pmax + x)[:, None]]
 
@@ -803,11 +809,11 @@ if __name__ == "__main__":
         cfg = SolveConfig(
             load_csv="wecc_load.csv",
             wecc_case_py="C:\\Users\\spoonawa\\Desktop\\New folder\\capacity-expansion-with-data-centers\\wecc240_2011.py",
-            horizon_hours=24 * 10,
+            horizon_hours=240,
             start_hour=0,
             delay_penalty=1.0,
             shift_penalty=0.0001,
-            slack_penalty=None,
+            slack_penalty=1e5,
             expansion_cost_scale=200.0,
             expansion_limit_fraction=0.3,
         )
@@ -836,4 +842,4 @@ if __name__ == "__main__":
             shift_budget_fraction=0.50,
         )
 
-        sweep_delay_window(cfg, flex, delay_windows=[0, 1, 2, 3, 4, 6], plot_bus_idx=0, plot_day=0)
+        sweep_delay_window(cfg, flex, delay_windows=[0, 1,2,3,4,5,6], plot_bus_idx=0, plot_day=0)
