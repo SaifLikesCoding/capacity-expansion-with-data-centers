@@ -17,11 +17,13 @@ loads = list(data["load"].values())
 for i, load in enumerate(loads):
     row = bus_id_to_row[load["load_bus"]]
 
-    bus_array[row,2] = load["pd"]
+    buses[row]["pd"] = load["pd"]
 
-lats = [bus["lat"] for bus in buses]
-lons = [bus["lon"] for bus in buses]
-pd_values = bus_array[:,2]
+ca_buses = [bus for bus in buses if 32.5 <= bus["lat"] <= 40.5 and -124.5 <= bus["lon"] <= -114] 
+lats = [bus["lat"] for bus in ca_buses]
+lons = [bus["lon"] for bus in ca_buses]
+print(len(ca_buses))
+pd_values = [bus["pd"] for bus in ca_buses]
 bus_type = bus_array [:,1]
 
 plt.scatter(lons,lats,c=pd_values)

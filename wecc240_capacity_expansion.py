@@ -23,8 +23,7 @@ import numpy as np
 import pandas as pd
 import cvxpy as cp
 import matplotlib.pyplot as plt
-from load_gridsfm import load_gridsfm_case
-
+from load_gridsfm_california import load_gridsfm_case
 
 # -----------------------------
 # MATPOWER column indices
@@ -246,6 +245,8 @@ def build_dc_network(case: dict):
     A_line = np.zeros((L, N))
     susceptance = np.zeros(L)
     Fmax = np.zeros(L)
+    angmin = np.zeros(L)
+    angmax = np.zeros(L)
 
     for ell, row in enumerate(active_branch):
         i = bus_map[int(row[F_BUS])]
@@ -258,6 +259,8 @@ def build_dc_network(case: dict):
         susceptance[ell] = b
         rate_a = row[RATE_A]
         Fmax[ell] = rate_a / baseMVA if rate_a > 0 else 10.0
+        angmin[ell] = row[ANGMIN]
+        angmax[ell] = row[ANGMAX]
 
     Gmap = np.zeros((N, G))
     Pmax = np.zeros(G)
@@ -309,6 +312,8 @@ def build_dc_network(case: dict):
         "B_line": np.diag(susceptance),
         "K": A_line.T,
         "Fmax": Fmax,
+        "Angmin":angmin,
+        "Angmax":angmax,
         "Gmap": Gmap,
         "Pmax": Pmax,
         "Pmin": Pmin,
@@ -416,6 +421,8 @@ def build_wecc_cvxpy_model(case_data: dict,
     Pmin = case_data["Pmin"]
     op_cost = case_data["op_cost"]
     Fmax = case_data["Fmax"]*0.85
+    Angmin = case_data["Angmin"]
+    Angmax = case_data["Angmax"]
     Hmap_from = case_data["Hmap_from"]
     Hmap_to = case_data["Hmap_to"]
     Hmin = case_data["Hmin"]
@@ -448,13 +455,14 @@ def build_wecc_cvxpy_model(case_data: dict,
     load_shed = cp.Variable((N, T), nonneg=True) if cfg.slack_penalty is not None else None
 
     cons = []
-    cons += [theta >= -3.14159, theta <= 3.14159]
 
     cons += [x <= Xmax]
     cons += [p >= Pmin[:, None], p <= (Pmax + x)[:, None]]
 
     for t in range(T):
         cons += [
+            A_line @ theta[:, t] <= Angmax,
+            A_line @ theta[:, t] >= Angmin,
             f[:, t] == B_line @ (A_line @ theta[:, t]),
             f[:, t] <= Fmax,
             f[:, t] >= -Fmax,
@@ -808,7 +816,7 @@ if __name__ == "__main__":
     if __name__ == "__main__":
         cfg = SolveConfig(
             load_csv="wecc_load.csv",
-            wecc_case_py="C:\\Users\\spoonawa\\Desktop\\New folder\\capacity-expansion-with-data-centers\\wecc240_2011.py",
+            wecc_case_py="c:/Users/spoonawa/Desktop/New folder/gridsfm_western.json",            
             horizon_hours=240,
             start_hour=0,
             delay_penalty=1.0,
@@ -842,4 +850,4 @@ if __name__ == "__main__":
             shift_budget_fraction=0.50,
         )
 
-        sweep_delay_window(cfg, flex, delay_windows=[0, 1,2,3,4,5,6], plot_bus_idx=0, plot_day=0)
+        sweep_delay_window(cfg, flex, delay_windows=[0, 1], plot_bus_idx=0, plot_day=0)
